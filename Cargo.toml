@@ -43,8 +43,8 @@ vendored-libgit2 = ["libgit2-sys/vendored"]
 vendored-openssl = ["openssl-sys/vendored", "libgit2-sys/vendored-openssl"]
 zlib-ng-compat = ["libgit2-sys/zlib-ng-compat"]
 
-[workspace]
-members = ["systest", "git2-curl"]
+#[workspace]
+#members = ["systest", "git2-curl"]
 
 [package.metadata.docs.rs]
 features = ["https", "ssh"]
