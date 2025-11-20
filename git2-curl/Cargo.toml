@@ -13,7 +13,7 @@ Intended to be used with the git2 crate.
 edition = "2021"
 
 [dependencies]
-curl = "0.4.33"
+curl = { workspace = true }
 url = "2.5.4"
 log = "0.4"
 git2 = { path = "..", version = "0.21", default-features = false }
