@@ -82,6 +82,7 @@ The build is now aborting. To disable, unset the variable or use `LIBGIT2_NO_VEN
     cfg.include(&include)
         .include("libgit2/src/libgit2")
         .include("libgit2/src/util")
+        .include("libgit2/src/util/hash") // Add this line
         .out_dir(dst.join("build"))
         .warnings(false);
 
@@ -207,9 +208,9 @@ The build is now aborting. To disable, unset the variable or use `LIBGIT2_NO_VEN
 
     // Use the CollisionDetection SHA1 implementation.
     features.push_str("#define GIT_SHA1_COLLISIONDETECT 1\n");
-    cfg.define("SHA1DC_NO_STANDARD_INCLUDES", "1");
-    cfg.define("SHA1DC_CUSTOM_INCLUDE_SHA1_C", "\"common.h\"");
-    cfg.define("SHA1DC_CUSTOM_INCLUDE_UBC_CHECK_C", "\"common.h\"");
+    // cfg.define("SHA1DC_NO_STANDARD_INCLUDES", "1");
+    // cfg.define("SHA1DC_CUSTOM_INCLUDE_SHA1_C", "\"common.h\"");
+    // cfg.define("SHA1DC_CUSTOM_INCLUDE_UBC_CHECK_C", "\"common.h\"");
     cfg.file("libgit2/src/util/hash/collisiondetect.c");
     cfg.file("libgit2/src/util/hash/sha1dc/sha1.c");
     cfg.file("libgit2/src/util/hash/sha1dc/ubc_check.c");
