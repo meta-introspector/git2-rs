@@ -4,6 +4,26 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[derive(Debug, Clone)]
+struct NixPaths {
+    glibc_dev: String,
+    gcc_path: String,
+    gcc_cpp_include: String,
+        openssl_include: String, // Path to OpenSSL development headers
+}
+
+impl NixPaths {
+    fn default_nix_paths() -> Self {
+        println!("cargo:warning=Using hardcoded default Nix paths.");
+        NixPaths {
+            glibc_dev: "/nix/store/gi4cz4ir3zlwhf1azqfgxqdnczfrwsr7-glibc-2.40-66-dev".to_string(),
+            gcc_path: "/nix/store/82kmz7r96navanrc2fgckh2bamiqrgsw-gcc-14.3.0".to_string(),
+            gcc_cpp_include: "/nix/store/82kmz7r96navanrc2fgckh2bamiqrgsw-gcc-14.3.0/include/c++/14.3.0".to_string(),
+	    openssl_include: "/nix/store/ydrckgnllgg8nmhdwni81h7xhcpnrlhd-openssl-3.6.0-dev/include".to_string(),
+        }
+    }
+}
+
 /// Tries to use system libgit2 and emits necessary build script instructions.
 fn try_system_libgit2() -> Result<pkg_config::Library, pkg_config::Error> {
     let mut cfg = pkg_config::Config::new();
@@ -22,6 +42,30 @@ fn try_system_libgit2() -> Result<pkg_config::Library, pkg_config::Error> {
 }
 
 fn main() {
+    // Aggressively unset potentially interfering environment variables
+    env::remove_var("CXX");
+    env::remove_var("CXXFLAGS");
+    env::remove_var("CPATH");
+    env::remove_var("C_INCLUDE_PATH");
+    env::remove_var("CPLUS_INCLUDE_PATH");
+    env::remove_var("CC"); // Unset CC as well, will set it explicitly later for cc::Build
+    env::remove_var("CFLAGS");
+    env::remove_var("LIBRARY_PATH");
+    env::remove_var("LD_LIBRARY_PATH");
+    env::remove_var("PROTOC");
+    env::remove_var("PROTOC_INCLUDE");
+    env::remove_var("BINDGEN_EXTRA_CLANG_ARGS");
+    env::remove_var("LLVM_CONFIG");
+    env::remove_var("LLVM_CONFIG_PATH");
+    env::remove_var("LIBCLANG_PATH");
+    env::remove_var("LIBCLANG_FLAGS");
+    env::remove_var("NIX_GLIBC_DEV");
+    env::remove_var("NIX_GCC_PATH");
+    env::remove_var("NIX_GCC_REAL_PATH");
+    env::remove_var("PKG_CONFIG_PATH");
+
+    let nix_paths = NixPaths::default_nix_paths();
+
     println!(
         "cargo:rustc-check-cfg=cfg(\
             libgit2_vendored,\
@@ -76,13 +120,26 @@ The build is now aborting. To disable, unset the variable or use `LIBGIT2_NO_VEN
     let mut cfg = cc::Build::new();
     fs::create_dir_all(&include).unwrap();
 
+    // Explicitly set the C compiler
+    cfg.compiler(&format!("{}/bin/gcc", nix_paths.gcc_path));
+    // Explicitly set the CXX environment variable for C++ compilation (cc::Build will use it)
+    env::set_var("CXX", &format!("{}/bin/g++", nix_paths.gcc_path));
+
+    // Explicitly add include paths
+    cfg.flag(&format!("-isystem{}/include", nix_paths.glibc_dev)); // Glibc C headers
+    cfg.include(&nix_paths.gcc_cpp_include); // GCC C++ headers
+       cfg.include(&nix_paths.openssl_include); // OpenSSL headers
+    cfg.flag("-include").flag("stdint.h"); // Force-include stdint.h
+
     // Copy over all header files
     cp_r("libgit2/include", &include);
+
 
     cfg.include(&include)
         .include("libgit2/src/libgit2")
         .include("libgit2/src/util")
         .include("libgit2/src/util/hash") // Add this line
+        .include("libgit2/src/util/hash/sha1dc") // Added for git_hash_sha1_ctx definition
         .out_dir(dst.join("build"))
         .warnings(false);
 
@@ -114,6 +171,9 @@ The build is now aborting. To disable, unset the variable or use `LIBGIT2_NO_VEN
         .include("libgit2/deps/pcre")
         .define("HAVE_STDINT_H", Some("1"))
         .define("HAVE_MEMMOVE", Some("1"))
+        .define("GIT_OPENSSL", Some("1")) // Use GIT_OPENSSL for SHA operations
+        .define("GIT_SHA1_BUILTIN", Some("0")) // Disable bundled SHA1
+        .define("GIT_SHA256_BUILTIN", Some("0")) // Disable bundled SHA256
         .define("NO_RECURSE", Some("1"))
         .define("NEWLINE", Some("10"))
         .define("POSIX_MALLOC_THRESHOLD", Some("10"))
