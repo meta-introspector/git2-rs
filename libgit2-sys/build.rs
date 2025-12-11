@@ -3,6 +3,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use rust_nix_bootstrap::{NixPathsProvider, HardcodedNixPaths};
 
 #[derive(Debug, Clone)]
 struct NixPaths {
@@ -12,14 +13,54 @@ struct NixPaths {
         openssl_include: String, // Path to OpenSSL development headers
 }
 
+// Helper function to get Nix path from environment variable or hardcoded fallback
+fn get_nix_path_from_env(env_var: &str, hardcoded_path_from_provider: &'static str) -> String {
+    let env_val = env::var(env_var);
+
+    match env_val {
+        Ok(path_from_env) => {
+            // Compare with hardcoded path if available
+            if path_from_env != hardcoded_path_from_provider {
+                println!(
+                    "cargo:warning=Nix path mismatch for {}: Environment provided '{}', hardcoded is '{}'.",
+                    env_var, path_from_env, hardcoded_path_from_provider
+                );
+                println!("cargo:warning=Using path from environment variable: {}", path_from_env);
+            } else {
+                println!("cargo:warning=Nix path for {} matches hardcoded: {}", env_var, path_from_env);
+            }
+            path_from_env
+        }
+        Err(_) => {
+            println!(
+                "cargo:warning=Environment variable {} not set. Using hardcoded fallback path from provider: {}",
+                env_var, hardcoded_path_from_provider
+            );
+            hardcoded_path_from_provider.to_string()
+        }
+    }
+}
+
 impl NixPaths {
     fn default_nix_paths() -> Self {
-        println!("cargo:warning=Using hardcoded default Nix paths.");
+        let hardcoded_provider = HardcodedNixPaths;
         NixPaths {
-            glibc_dev: "/nix/store/gi4cz4ir3zlwhf1azqfgxqdnczfrwsr7-glibc-2.40-66-dev".to_string(),
-            gcc_path: "/nix/store/82kmz7r96navanrc2fgckh2bamiqrgsw-gcc-14.3.0".to_string(),
-            gcc_cpp_include: "/nix/store/82kmz7r96navanrc2fgckh2bamiqrgsw-gcc-14.3.0/include/c++/14.3.0".to_string(),
-	    openssl_include: "/nix/store/ydrckgnllgg8nmhdwni81h7xhcpnrlhd-openssl-3.6.0-dev/include".to_string(),
+            glibc_dev: get_nix_path_from_env(
+                "NIX_GLIBC_DEV",
+                hardcoded_provider.glibc_dev(),
+            ),
+            gcc_path: get_nix_path_from_env(
+                "NIX_GCC_PATH",
+                hardcoded_provider.gcc_path(),
+            ),
+            gcc_cpp_include: get_nix_path_from_env(
+                "NIX_GCC_CPP_INCLUDE",
+                hardcoded_provider.gcc_cpp_include(),
+            ),
+            openssl_include: get_nix_path_from_env(
+                "NIX_OPENSSL_INCLUDE",
+                hardcoded_provider.openssl_include(),
+            ),
         }
     }
 }
@@ -172,8 +213,8 @@ The build is now aborting. To disable, unset the variable or use `LIBGIT2_NO_VEN
         .define("HAVE_STDINT_H", Some("1"))
         .define("HAVE_MEMMOVE", Some("1"))
         .define("GIT_OPENSSL", Some("1")) // Use GIT_OPENSSL for SHA operations
-        .define("GIT_SHA1_BUILTIN", Some("0")) // Disable bundled SHA1
-        .define("GIT_SHA256_BUILTIN", Some("0")) // Disable bundled SHA256
+
+
         .define("NO_RECURSE", Some("1"))
         .define("NEWLINE", Some("10"))
         .define("POSIX_MALLOC_THRESHOLD", Some("10"))
@@ -287,6 +328,7 @@ The build is now aborting. To disable, unset the variable or use `LIBGIT2_NO_VEN
             cfg.file("libgit2/src/util/hash/openssl.c");
         }
     } else {
+        features.push_str("#define GIT_SHA1_BUILTIN 1\n");
         features.push_str("#define GIT_SHA256_BUILTIN 1\n");
         cfg.file("libgit2/src/util/hash/builtin.c");
         cfg.file("libgit2/src/util/hash/rfc6234/sha224-256.c");
